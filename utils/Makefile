@@ -15,7 +15,7 @@
 # CONFIG variables
 CFILE=forloop
 
-all: build run
+all: build
 
 build:
 	# pasos para compilar codigo de c
@@ -36,7 +36,7 @@ run:
 clean:
 	# EN DESARROLLO
 	# SOLO USAR ESTE TARGET SI SE SABE LO QUE SE ESTA HACIENDO
-	cd test/ && \
+	cd firmware/ && \
 	rm -f $(CFILE).asm && \
 	rm -f $(CFILE).o && \
 	rm -f $(CFILE).elf && \
