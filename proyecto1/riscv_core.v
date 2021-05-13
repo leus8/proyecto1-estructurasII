@@ -30,7 +30,8 @@
 
 module riscv_core #(
   parameter     PC_SIZE  = 32,
-  parameter     RESET_SP = 32'h2000
+  parameter     RESET_SP = 32'h2000,
+  parameter     HISTORY_SIZE  = 4
 )(
   input         clk_i,
   input         reset_i,
@@ -112,6 +113,7 @@ localparam
 /*- Instruction Fetch State Machine -----------------------------------------*/
 reg   [1:0] if_state_r;
 reg  [15:0] if_buf_r;
+
 
 always @(posedge clk_i) begin
   if (reset_i) begin
@@ -483,8 +485,6 @@ wire [1:0] id_mem_size_w =
 
 /*- Hazard Detection --------------------------------------------------------*/
 `ifdef ENABLE_PIPELINE
-initial
-$display("PIPELINE ENABLED");
 wire id_hazard_w = (id_rd_index_r != 5'd0) && (id_ra_index_w == id_rd_index_r || id_rb_index_w == id_rd_index_r);
 wire ex_hazard_w = (ex_rd_index_r != 5'd0) && (id_ra_index_w == ex_rd_index_r || id_rb_index_w == ex_rd_index_r);
 wire hazard_w    = id_hazard_w || ex_hazard_w;
@@ -861,6 +861,7 @@ always @(posedge clk_i) begin
     reg_r[rd_index_w] <= rd_value_w;
 end
 
+
 /*Branch predictor monitor: 1 bit, no history table  */
 reg predictor;
 reg branch_result;
@@ -893,9 +894,34 @@ always @(posedge predictor or negedge predictor) begin
 end
 
 wire branch = (BR_JUMP == id_branch_r) | (BR_EQ   == id_branch_r) | (BR_NE   == id_branch_r) | (BR_LT   == id_branch_r) | (BR_GE   == id_branch_r) | (BR_LTU  == id_branch_r) | (BR_GEU  == id_branch_r);
+wire [31:0] predicted_PC;
+
+gshare U0 (
+.clk_i (clk_i),
+.reset_i (reset_i),
+.branch_taken_w (branch_taken_w),
+.predicted_PC (predicted_PC),
+.jump_addr_w (jump_addr_w),
+.branch_inst (1),
+.branch (branch) 
+);
 
 endmodule
 
+
+module gshare
+  #(
+  parameter     HISTORY_SIZE  = 4
+  )
+ (
+  input clk_i,
+  input reset_i,
+  input branch_taken_w, //Taken or Not taken.
+  input [31:0] branch_inst, // Jump direction
+  input branch, 
+  input [31:0] jump_addr_w,
+  output [31:0] predicted_PC
+ );
 
 /*Branch pedirctor gshare: 2 bits */
 
@@ -905,29 +931,85 @@ reg branch_inst_gshare;
 reg [31:0] error_gshare;
 reg [31:0] total_branch_gshare;
 
-integer i, j;
+integer i;
 
-reg [1:0] pattern_history [0:2**(4)-1];
-reg [31:0] PC_prediction [0:2**(4)-1];
-reg prediction;
+reg [1:0] pattern_history [0:7];
+reg [31:0] PC_prediction [0:7];
+
+reg [1:0] prediction;
 reg [31:0] predicted_PC;
 
-reg [4-1:0] global_history;
-reg [4-1:0] global_history_prev;
+reg [2:0] global_history;
+reg [2:0] global_history_prev;
 
+reg [1:0] actual_state;
+
+reg [1:0] p0, p1, p2, p3, p4, p5, p6, p7;
+reg [31:0] dir0, dir1, dir2, dir3, dir4, dir5, dir6, dir7;
+
+wire branch;
  //00 SN
  //01 WN
  //10 WT
  //11 ST
 
-
-always @(posedge clk) begin
-    if(reset_i)begin
-        global_history = 0;
-        global_history_prev = 0;
-    end
-    else begin
-        global_history_prev = global_history;
-        global_history = {branch_taken_w, global_history[3:1]}
-    end
+always @(posedge clk_i) begin
+  if(reset_i) begin
+    global_history = 0;
+    global_history_prev = 0;
+  end
 end
+
+
+always @(posedge clk_i) begin
+  if(reset_i)begin
+    for (i = 0; i < 2**3; i = i + 1) begin
+      pattern_history[i] <= 0;
+      PC_prediction[i] <= 0;
+    end
+    global_history <= 0;
+    global_history_prev <= 0;
+  end
+  else begin
+    global_history_prev <= global_history;
+    if (branch) begin
+      global_history <= {branch_taken_w, global_history[2:1]};
+    end
+
+    if (branch && branch_taken_w && pattern_history[global_history] != 11) begin
+      pattern_history[global_history] = pattern_history[global_history] + 1;
+      
+      PC_prediction[global_history] = jump_addr_w;  //guardar PC_next solo en el caso Taken.
+    end
+    else if (branch && branch_taken_w == 0 && pattern_history[global_history] != 00) begin
+      pattern_history[global_history] = pattern_history[global_history] - 1;
+    end
+  end
+end
+
+always @(*) begin
+  if(branch && branch_taken_w ) predicted_PC = PC_prediction[global_history];
+  else predicted_PC = 0;
+end
+
+always @( *) begin
+  p0 = pattern_history[0];
+  p1 = pattern_history[1];
+  p2 = pattern_history[2];
+  p3 = pattern_history[3];
+  p4 = pattern_history[4];
+  p5 = pattern_history[5];
+  p6 = pattern_history[6];
+  p7 = pattern_history[7];
+  dir0 = PC_prediction[0];
+  dir1 = PC_prediction[1];
+  dir2 = PC_prediction[2];
+  dir3 = PC_prediction[3];
+  dir4 = PC_prediction[4];
+  dir5 = PC_prediction[5];
+  dir6 = PC_prediction[6];
+  dir7 = PC_prediction[7];
+end
+
+
+endmodule
