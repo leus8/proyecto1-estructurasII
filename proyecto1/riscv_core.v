@@ -933,19 +933,19 @@ reg [31:0] total_branch_gshare;
 
 integer i;
 
-reg [1:0] pattern_history [0:7];
-reg [31:0] PC_prediction [0:7];
+reg [1:0] pattern_history [0:31];
+reg [31:0] PC_prediction [0:31];
 
-reg [1:0] prediction;
+reg prediction;
 reg [31:0] predicted_PC;
 
-reg [2:0] global_history;
-reg [2:0] global_history_prev;
+reg [4:0] global_history;
+reg [4:0] global_history_prev;
 
 reg [1:0] actual_state;
 
-reg [1:0] p0, p1, p2, p3, p4, p5, p6, p7;
-reg [31:0] dir0, dir1, dir2, dir3, dir4, dir5, dir6, dir7;
+
+reg [31:0] errores, total_branches; 
 
 wire branch;
  //00 SN
@@ -963,52 +963,47 @@ end
 
 always @(posedge clk_i) begin
   if(reset_i)begin
-    for (i = 0; i < 2**3; i = i + 1) begin
+    for (i = 0; i < 32; i = i + 1) begin
       pattern_history[i] <= 0;
       PC_prediction[i] <= 0;
+      total_branches <= 0;
+      errores <= 0;
+      prediction <= 0;
     end
     global_history <= 0;
     global_history_prev <= 0;
   end
   else begin
     global_history_prev <= global_history;
+
     if (branch) begin
-      global_history <= {branch_taken_w, global_history[2:1]};
+
+      if(branch_taken_w && pattern_history[global_history] != 2'b11) pattern_history[global_history]++;
+      else if(!branch_taken_w && pattern_history[global_history] != 2'b00) pattern_history[global_history]--;
+      else pattern_history[global_history] = pattern_history[global_history];
+
+      global_history <= {branch_taken_w, global_history[4:1]};
+      total_branches++;
     end
 
-    if (branch && branch_taken_w && pattern_history[global_history] != 11) begin
-      pattern_history[global_history] = pattern_history[global_history] + 1;
-      
-      PC_prediction[global_history] = jump_addr_w;  //guardar PC_next solo en el caso Taken.
+    if (branch && (branch_taken_w != prediction || jump_addr_w != PC_prediction[global_history])) begin
+      errores++;
     end
-    else if (branch && branch_taken_w == 0 && pattern_history[global_history] != 00) begin
-      pattern_history[global_history] = pattern_history[global_history] - 1;
+
+    if (branch && prediction) begin
+      PC_prediction[global_history] = jump_addr_w;
     end
+
   end
 end
 
 always @(*) begin
   if(branch && branch_taken_w ) predicted_PC = PC_prediction[global_history];
   else predicted_PC = 0;
-end
 
-always @( *) begin
-  p0 = pattern_history[0];
-  p1 = pattern_history[1];
-  p2 = pattern_history[2];
-  p3 = pattern_history[3];
-  p4 = pattern_history[4];
-  p5 = pattern_history[5];
-  p6 = pattern_history[6];
-  p7 = pattern_history[7];
-  dir0 = PC_prediction[0];
-  dir1 = PC_prediction[1];
-  dir2 = PC_prediction[2];
-  dir3 = PC_prediction[3];
-  dir4 = PC_prediction[4];
-  dir5 = PC_prediction[5];
-  dir6 = PC_prediction[6];
-  dir7 = PC_prediction[7];
+  if (branch && pattern_history[global_history][1]) prediction = 1;
+  else if (branch && !pattern_history[global_history][1]) prediction = 0;
+  else prediction = 0;
 end
 
 
