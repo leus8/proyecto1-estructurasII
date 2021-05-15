@@ -10,12 +10,13 @@ module pshare
   input [Direction_SIZE-1:0] direction, 
   output reg prediction, //Take it or not take it.
   output reg [Direction_SIZE-1:0] predicted_PC,
-  output reg [32:0]total_branch
+  output reg [31:0]total_branch
  );
+  //output reg [31:0]past_past_direction
 
  integer i;
+ reg [Direction_SIZE-1:0] direction_reg;
  reg [Direction_SIZE-1:0] past_direction;
- reg [Direction_SIZE-1:0] past_past_direction;
  //reg prediction;
  //reg total_branch;
  //00 SN
@@ -25,6 +26,10 @@ module pshare
  reg [Direction_SIZE -1 :0] history_table [0:99];// contiene direcciones
  reg [1:0]state_dir [0:99]; // Donde se tiene el valor de la direccion
  reg errores; //  La cantidad de errores que se tienen
+
+ always @(*) begin
+   direction_reg = direction;
+ end
   
  always @(posedge clk) begin
   if (reset == 0) begin
@@ -37,7 +42,8 @@ module pshare
     end
   end
   else begin
-    past_direction <= direction;
+    //past_direction <= direction;
+    past_direction <= direction_reg;
     total_branch = total_branch + 1;
     for (i = 0; i < 100; i = i + 1) begin
       if (history_table[i] == past_direction) begin
@@ -105,7 +111,6 @@ initial begin
   #1000
   $finish;
 end
-
 always @(posedge clk) begin
   branch_result = $random;
   addr = $random;
@@ -118,7 +123,7 @@ initial	clk_i 	<= 0;			// Valor inicial al reloj, sino siempre ser� indetermin
 always	#4 clk_i 	<= ~clk_i;		// Hace "toggle" cada 2*1ns
 
 pshare U0 (
-.clk (clk_i),
+.clk (clk),
 .reset (reset),
 .branch_result (branch_result),
 .prediction (),
