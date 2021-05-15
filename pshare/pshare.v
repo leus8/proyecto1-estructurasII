@@ -8,61 +8,74 @@ module pshare
   input  branch_result, //Taken or Not taken.
   input  [Direction_SIZE-1:0] next_PC, // Jump direction
   input [Direction_SIZE-1:0] direction, 
-  output prediction, //Take it or not take it.
+  output reg prediction, //Take it or not take it.
   output reg [Direction_SIZE-1:0] predicted_PC,
-  output reg total_branch
+  output reg [32:0]total_branch
  );
 
  integer i;
  reg [Direction_SIZE-1:0] past_direction;
- reg prediction;
+ reg [Direction_SIZE-1:0] past_past_direction;
+ //reg prediction;
  //reg total_branch;
  //00 SN
  //01 WN
  //10 WT
  //11 ST
- reg [Direction_SIZE -1 :0] history_table [0:99];
- reg [1:0]state_dir [0:99] // Donde se tiene el valor de la direccion
- reg [31:0] errores [0:99]; //  La cantidad de errores que se tienen
- 
+ reg [Direction_SIZE -1 :0] history_table [0:99];// contiene direcciones
+ reg [1:0]state_dir [0:99]; // Donde se tiene el valor de la direccion
+ reg errores; //  La cantidad de errores que se tienen
+  
  always @(posedge clk) begin
   if (reset == 0) begin
-    past_direction = 0;
+    //past_direction <= 0;
     total_branch = 0;
-  end
-  else begin
-    past_direction = direction;
-    total_branch <= total_branch + 1;
-  end
-end 
-
-always @(posedge clk) begin
-    prediction = history_table[direction];
-    predicted_PC = PC_prediction[direction];
-end
-
-always @(posedge clk) begin
-  if (reset == 0) begin
-    for (i = 0; i < 2**Direction_SIZE; i = i + 1) begin
+    errores = 0;
+    for (i = 0; i < 100; i = i + 1) begin
       history_table[i] = 0;
-      PC_prediction[i] = 0;
+      state_dir[i] = 1;
     end
   end
   else begin
-      if (branch_result == 1 && history_table[past_direction] != 11) begin
-          history_table[past_direction] = history_table[past_direction] + 1;
-          PC_prediction[past_direction] = next_PC;  //guardar PC_next solo en el caso Taken.
-          if (branch_result == 1 && history_table[past_direction] != 10) begin
-              errores[past_direction] = errores[past_direction] + 1;
+    past_direction <= direction;
+    total_branch = total_branch + 1;
+    for (i = 0; i < 100; i = i + 1) begin
+      if (history_table[i] == past_direction) begin
+          if (branch_result == 1 && state_dir[i] != 11) begin
+              state_dir[i] = state_dir[i] + 1;
+              if (branch_result == 1 && state_dir[i] != 10) begin
+                  errores = errores + 1;
+              end
           end
+          if (branch_result == 0 && state_dir[i] != 00)
+            state_dir[i] = state_dir[i] - 1;
+            if (branch_result == 1 && state_dir[i] != 01) begin
+                  errores = errores + 1;
+              end
       end
-      if (branch_result == 0 && history_table[past_direction] != 00)
-        history_table[past_direction] = history_table[past_direction] - 1;
-        if (branch_result == 1 && history_table[past_direction] != 01) begin
-              errores[past_direction] = errores[past_direction] + 1;
-          end
+    end
+    i =0 ;
+    if (direction != past_direction) begin
+      while (i<100) begin
+        if (history_table[i] == direction) begin
+            prediction = state_dir[i];
+            i = 100;  
+        end
+        else if (history_table[i] == 0) begin
+            history_table[i] = past_direction;
+            prediction = state_dir[i]; 
+            i = 100;     
+        end
+        i = i + 1;
+      end
+    end
   end
-end
+ end 
+
+ //always @(negedge clk) begin
+ // past_direction <= direction;
+//end
+
 
 endmodule
 
@@ -74,7 +87,7 @@ endmodule
 // Testbench Code Goes here
 module gshare_tb;
 
-reg clk, reset, branch_result;
+reg clk, clk_i, reset, branch_result;
 reg [31:0] addr;
 
 integer i;
@@ -84,12 +97,9 @@ initial begin
 
   $dumpfile("test.vcd");
   $dumpvars(0);
-
-  for (i = 0; i < 2**HISTORY_SIZE; i = i + 1); 
-  
+  for (i = 0; i < 100; i = i + 1)  $dumpvars(0, U0.history_table[i], U0.state_dir[i]); 
   clk = 0;
   reset = 0;
-  #5 reset = 0;
   #15 reset = 1;
   branch_result=0;
   #1000
@@ -101,12 +111,14 @@ always @(posedge clk) begin
   addr = $random;
 end
   
-always begin
- #5 clk = !clk;
-end
+// Reloj
+initial	clk 	<= 0;			// Valor inicial al reloj, sino siempre ser� indeterminado
+always	#4 clk 	<= ~clk;		// Hace "toggle" cada 2*1ns
+initial	clk_i 	<= 0;			// Valor inicial al reloj, sino siempre ser� indeterminado
+always	#4 clk_i 	<= ~clk_i;		// Hace "toggle" cada 2*1ns
 
 pshare U0 (
-.clk (clk),
+.clk (clk_i),
 .reset (reset),
 .branch_result (branch_result),
 .prediction (),
