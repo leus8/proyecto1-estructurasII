@@ -17,6 +17,11 @@ module pshare
  integer i;
  reg [Direction_SIZE-1:0] direction_reg;
  reg [Direction_SIZE-1:0] past_direction;
+ reg [Direction_SIZE-1:0] past_past_direction;
+ reg [Direction_SIZE-1:0] past_past_past_direction;
+ reg branch_reg;
+ reg past_branch;
+ reg past_past_branch;
  //reg prediction;
  //reg total_branch;
  //00 SN
@@ -25,10 +30,11 @@ module pshare
  //11 ST
  reg [Direction_SIZE -1 :0] history_table [0:99];// contiene direcciones
  reg [1:0]state_dir [0:99]; // Donde se tiene el valor de la direccion
- reg errores; //  La cantidad de errores que se tienen
+ reg [31:0]errores; //  La cantidad de errores que se tienen
 
  always @(*) begin
    direction_reg = direction;
+   branch_reg = branch_result;
  end
   
  always @(posedge clk) begin
@@ -44,36 +50,52 @@ module pshare
   else begin
     //past_direction <= direction;
     past_direction <= direction_reg;
+    past_past_direction <= past_direction;
+    past_past_past_direction <= past_past_direction;
+    past_branch <= branch_reg;
+    past_past_branch <= past_branch;
     total_branch = total_branch + 1;
     for (i = 0; i < 100; i = i + 1) begin
-      if (history_table[i] == past_direction) begin
-          if (branch_result == 1 && state_dir[i] != 11) begin
+      if (history_table[i] == past_past_direction) begin
+          if (past_past_branch == 1 && state_dir[i] != 11) begin
+              if (past_past_branch == 1 && state_dir[i] != 10) errores = errores + 1;
               state_dir[i] = state_dir[i] + 1;
-              if (branch_result == 1 && state_dir[i] != 10) begin
-                  errores = errores + 1;
-              end
           end
-          if (branch_result == 0 && state_dir[i] != 00)
+          else if (past_past_branch == 0 && state_dir[i] != 00) begin
+            if (past_past_branch == 1 && state_dir[i] != 01) errores = errores + 1;
             state_dir[i] = state_dir[i] - 1;
-            if (branch_result == 1 && state_dir[i] != 01) begin
-                  errores = errores + 1;
-              end
+          end
       end
     end
+    
     i =0 ;
     if (direction != past_direction) begin
       while (i<100) begin
-        if (history_table[i] == direction) begin
-            prediction = state_dir[i];
-            i = 100;  
-        end
-        else if (history_table[i] == 0) begin
+        //if (history_table[i] == past_past_past_direction) begin
+        //    prediction = state_dir[i];
+        //    i = 100;  
+        //end
+        if (history_table[i] == 0) begin
             history_table[i] = past_direction;
             prediction = state_dir[i]; 
             i = 100;     
         end
         i = i + 1;
       end
+    end
+    i =0 ;
+    while (i<100) begin
+      if (history_table[i] == past_past_past_direction) begin
+          //prediction = state_dir[i];
+          if (state_dir[i]==10 || state_dir[i]==11) begin
+              prediction = 1;
+          end
+          else if (state_dir[i]==01 || state_dir[i]==00) begin
+              prediction = 0;
+          end
+          i = 100;  
+      end
+      i = i + 1;
     end
   end
  end 
