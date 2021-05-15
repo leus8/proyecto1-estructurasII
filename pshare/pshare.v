@@ -41,6 +41,7 @@ module pshare
   if (reset == 0) begin
     //past_direction <= 0;
     total_branch = 0;
+    prediction = 0;
     errores = 0;
     for (i = 0; i < 100; i = i + 1) begin
       history_table[i] = 0;
