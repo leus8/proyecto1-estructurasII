@@ -14,7 +14,7 @@ module pshare
  );
   //output reg [31:0]past_past_direction
 
- integer i;
+ integer i,j;
  reg [Direction_SIZE-1:0] direction_reg;
  reg [Direction_SIZE-1:0] past_direction;
  reg [Direction_SIZE-1:0] past_past_direction;
@@ -38,7 +38,7 @@ module pshare
  end
   
  always @(posedge clk) begin
-  if (reset == 0) begin
+  if (reset == 1) begin
     //past_direction <= 0;
     total_branch = 0;
     prediction = 0;
@@ -58,17 +58,16 @@ module pshare
     total_branch = total_branch + 1;
     for (i = 0; i < 100; i = i + 1) begin
       if (history_table[i] == past_past_direction) begin
-          if (past_past_branch == 1 && state_dir[i] != 11) begin
-              if (past_past_branch == 1 && state_dir[i] != 10) errores = errores + 1;
+          if (past_past_branch == 1 && state_dir[i] != 2'b11) begin
+              if (past_past_branch == 1 && state_dir[i] != 2'b10) errores = errores + 1;
               state_dir[i] = state_dir[i] + 1;
           end
           else if (past_past_branch == 0 && state_dir[i] != 00) begin
-            if (past_past_branch == 1 && state_dir[i] != 01) errores = errores + 1;
+            if (past_past_branch == 0 && state_dir[i] != 01) errores = errores + 1;
             state_dir[i] = state_dir[i] - 1;
           end
       end
     end
-    
     i =0 ;
     if (direction != past_direction) begin
       while (i<100) begin
@@ -76,9 +75,11 @@ module pshare
         //    prediction = state_dir[i];
         //    i = 100;  
         //end
-        if (history_table[i] == 0) begin
+        if (history_table[i]==past_direction) begin
+          i=100;
+        end
+        else if (history_table[i] == 0) begin
             history_table[i] = past_direction;
-            prediction = state_dir[i]; 
             i = 100;     
         end
         i = i + 1;
@@ -86,12 +87,12 @@ module pshare
     end
     i =0 ;
     while (i<100) begin
-      if (history_table[i] == past_past_past_direction) begin
+      if (history_table[i] == past_direction) begin
           //prediction = state_dir[i];
-          if (state_dir[i]==10 || state_dir[i]==11) begin
+          if (state_dir[i]==2'b10 || state_dir[i]==2'b11) begin
               prediction = 1;
           end
-          else if (state_dir[i]==01 || state_dir[i]==00) begin
+          else if (state_dir[i]==2'b01 || state_dir[i]==2'b00) begin
               prediction = 0;
           end
           i = 100;  
@@ -127,16 +128,58 @@ initial begin
   $dumpfile("test.vcd");
   $dumpvars(0);
   for (i = 0; i < 100; i = i + 1)  $dumpvars(0, U0.history_table[i], U0.state_dir[i]); 
-  clk = 0;
-  reset = 0;
-  #15 reset = 1;
-  branch_result=0;
-  #1000
+  reset = 1;
+   @(posedge clk)
+      reset <= 0;
+      addr <= 16'hFFFFFFFF;
+		  branch_result <= 0 ;
+		
+    @(posedge clk)
+      reset <= 0;
+      addr <= 16'hAAAAAAAA;
+		  branch_result <= 1 ;
+    @(posedge clk)
+      reset <= 0;
+      addr <= 16'hFFFFFFFFFFFF;
+		  branch_result <= 0 ;
+    @(posedge clk)
+      reset <= 0;
+      addr <= 16'hFFFFFFFFFFFF;
+		  branch_result <= 0 ;
+    @(posedge clk)
+      reset <= 0;
+      addr <= 16'hAAAAAAAA;
+		  branch_result <= 1 ;
+    @(posedge clk)
+      reset <= 0;
+      addr <= 16'hAAAAAAAA;
+		  branch_result <= 1 ;
+    @(posedge clk)
+      reset <= 0;
+      addr <= 16'hFFFFFFFFFFFF;
+		  branch_result <= 0 ;
+		
+    @(posedge clk)
+      reset <= 0;
+      addr <= 16'hAAAAAAAA;
+		  branch_result <= 0 ;
+    @(posedge clk)
+      reset <= 0;
+      addr <= 16'hFFFFFFFFFFFF;
+		  branch_result <= 1 ;
+    @(posedge clk)
+      reset <= 0;
+      addr <= 16'hFFFFFFFFFFFF;
+		  branch_result <= 1;
+    @(posedge clk)
+      reset <= 0;
+      addr <= 16'hAAAAAAAA;
+		  branch_result <= 0 ;
+    @(posedge clk)
+      reset <= 0;
+      addr <= 16'hAAAAAAAA;
+		  branch_result <= 0 ;
   $finish;
-end
-always @(posedge clk) begin
-  branch_result = $random;
-  addr = $random;
 end
   
 // Reloj
