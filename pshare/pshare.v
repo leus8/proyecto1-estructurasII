@@ -16,7 +16,7 @@ module pshare
  );
   //output reg [31:0]past_past_direction
 
- integer i,j;
+ integer i,j,k;
  reg [Direction_SIZE-1:0] direction_reg;
  reg [Direction_SIZE-1:0] past_direction;
  reg [Direction_SIZE-1:0] past_past_direction;
@@ -24,6 +24,12 @@ module pshare
  reg branch_reg;
  reg past_branch;
  reg past_past_branch;
+ reg was_branch_reg;
+ reg past_was_branch;
+ reg past_past_was_branch;
+ reg [Direction_SIZE-1:0] pc_reg;
+ reg [Direction_SIZE-1:0] past_pc;
+ reg [Direction_SIZE-1:0] past_past_pc;
  //reg prediction;
  //reg total_branch;
  //00 SN
@@ -32,32 +38,31 @@ module pshare
  //11 ST
  reg [Direction_SIZE -1 :0] history_table [0:Table_SIZE - 1];// contiene direcciones
  reg [1:0]state_dir [0:Table_SIZE - 1]; // Donde se tiene el valor de la direccion
+ reg [Direction_SIZE -1 :0] Table_PC [0:Table_SIZE - 1];// contiene direcciones de PC
  reg [31:0]errores; //  La cantidad de errores que se tienen
-
+ reg [31:0]pc_error; //  La cantidad de errores que se tienen
  always @(*) begin
    direction_reg = direction;
    branch_reg = branch_result;
+   pc_reg = next_PC;
+   was_branch_reg = was_branch;
  end
   
  always @(posedge clk) begin
   if (reset == 1) begin
+    k=0;
     //past_direction <= 0;
     total_branch = 0;
     prediction = 0;
     errores = 0;
+    pc_error = 0;
     for (i = 0; i < Table_SIZE; i = i + 1) begin
       history_table[i] = 1;
       state_dir[i] = 1;
+      Table_PC[i]=1;
     end
   end
-  else if (was_branch == 1)begin
-    //past_direction <= direction;
-    past_direction <= direction_reg;
-    past_past_direction <= past_direction;
-    past_past_past_direction <= past_past_direction;
-    past_branch <= branch_reg;
-    past_past_branch <= past_branch;
-    total_branch = total_branch + 1;
+  else if (past_past_was_branch == 1 || past_was_branch == 1)begin
     for (i = 0; i < Table_SIZE; i = i + 1) begin
       if (history_table[i] == past_past_direction) begin
           if (past_past_branch == 1 && state_dir[i] != 2'b11) begin
@@ -70,23 +75,33 @@ module pshare
           end
       end
     end
-    i =0 ;
-    if (direction != past_direction) begin
-      while (i<Table_SIZE) begin
-        //if (history_table[i] == past_past_past_direction) begin
-        //    prediction = state_dir[i];
-        //    i = 100;  
-        //end
-        if (history_table[i]==past_direction) begin
-          i=Table_SIZE;
-        end
-        else if (history_table[i] == 1) begin
-            history_table[i] = past_direction;
-            i = Table_SIZE ;     
-        end
-        i = i + 1;
+    for (i = 0; i < Table_SIZE; i = i + 1) begin
+      if (history_table[i] == past_past_direction) begin
+          if (past_past_pc != Table_PC[i]) begin
+              pc_error = pc_error + 1;
+              Table_PC[i] = past_past_pc;
+          end
       end
     end
+    i =0 ;
+    if (direction != past_past_direction) begin
+        while (i<Table_SIZE) begin
+          //if (history_table[i] == past_past_past_direction) begin
+          //    prediction = state_dir[i];
+          //    i = 100;  
+          //end
+          if (history_table[i]==past_direction) begin
+            i=Table_SIZE;
+          end
+          else if (history_table[i] == 1) begin
+              history_table[i] = past_direction;
+              i = Table_SIZE ;     
+          end
+          i = i + 1;
+        end
+      end
+  
+    
     i =0 ;
     while (i<Table_SIZE) begin
       if (history_table[i] == past_direction) begin
@@ -101,10 +116,30 @@ module pshare
       end
       i = i + 1;
     end
+    i=0;
+    while (i<Table_SIZE) begin
+      if (history_table[i] == past_direction) begin
+          predicted_PC = Table_PC[i];  
+      end
+      i = i + 1;
+    end
+
   end
   else if (was_branch == 0) begin
     prediction <= 0;
   end
+  //past_direction <= direction;
+    past_direction <= direction_reg;
+    past_past_direction <= past_direction;
+    past_past_past_direction <= past_past_direction;
+    past_branch <= branch_reg;      
+    past_past_branch <= past_branch;
+    past_pc <= pc_reg;      
+    past_past_pc <= past_pc;
+    past_was_branch <= was_branch_reg;
+    past_past_was_branch <= past_was_branch;
+   if (was_branch == 1) total_branch <= total_branch + 1;
+  
  end 
 
  //always @(negedge clk) begin
@@ -124,6 +159,7 @@ module gshare_tb;
 
 reg clk, clk_i, reset, branch_result, was_branch;
 reg [31:0] addr;
+reg [31:0] next_PC;
 
 integer i;
 parameter     HISTORY_SIZE  = 32;
@@ -132,61 +168,89 @@ initial begin
 
   $dumpfile("test.vcd");
   $dumpvars(0);
-  for (i = 0; i < 100; i = i + 1)  $dumpvars(0, U0.history_table[i], U0.state_dir[i]); 
+  for (i = 0; i < 100; i = i + 1)  $dumpvars(0, U0.history_table[i], U0.state_dir[i], U0.Table_PC[i]); 
   reset = 1;
-  was_branch=1;
+  was_branch=0;
+  next_PC = 16'hFFFFFFFF;
    @(posedge clk)
       reset <= 0;
+      next_PC <= 16'hAAAAAAAA;
       addr <= 16'hFFFFFFFF;
 		  branch_result <= 0 ;
 		
     @(posedge clk)
       reset <= 0;
+      next_PC <= 16'hFFFFFFFF;
       addr <= 16'hAAAAAAAA;
 		  branch_result <= 1 ;
     @(posedge clk)
       reset <= 0;
       addr <= 16'hFFFFFFFFFFFF;
+      next_PC <= 16'hFFFFFFFF;
 		  branch_result <= 0 ;
     @(posedge clk)
       reset <= 0;
       addr <= 16'hFFFFFFFFFFFF;
+      next_PC <= 16'hAAAAAAAA;
 		  branch_result <= 1 ;
     @(posedge clk)
       reset <= 0;
       addr <= 16'hAAAAAAAA;
+      next_PC <= 16'hAAAAAAAA;
 		  branch_result <= 1 ;
     @(posedge clk)
       reset <= 0;
+      next_PC <= 16'hFFFFFFFF;
       addr <= 16'hAAAAAAAA;
 		  branch_result <= 1 ;
-      was_branch <= 0;
+      was_branch <= 1;
     @(posedge clk)
       reset <= 0;
+      next_PC <= 16'hBBBBBBBB;
       addr <= 16'hFFFFFFFFFFFF;
 		  branch_result <= 1 ;
 		
     @(posedge clk)
       reset <= 0;
-      addr <= 16'hAAAAAAAA;
+      addr <= 16'hBBBBBBBB;
+      next_PC <= 16'hFFFFFFFF;
 		  branch_result <= 0 ;
+      was_branch <= 0;
     @(posedge clk)
       reset <= 0;
       addr <= 16'hFFFFFFFFFFFF;
+      next_PC <= 16'hBBBBBBBB;
 		  branch_result <= 1 ;
     @(posedge clk)
       reset <= 0;
-      addr <= 16'hFFFFFFFFFFFF;
+      next_PC <= 16'hBBBBBBBB;
+      addr <= 16'hBBBBBBBB;
 		  branch_result <= 1;
+    @(posedge clk)
+      reset <= 0;
+      next_PC <= 16'hCCCCCC;
+      addr <= 16'hBBBBBB;
+		  branch_result <= 0 ;
       was_branch <= 1;
     @(posedge clk)
       reset <= 0;
-      addr <= 16'hAAAAAAAA;
+      addr <= 16'hCCCCCC;
 		  branch_result <= 0 ;
     @(posedge clk)
-      reset <= 0;
-      addr <= 16'hAAAAAAAA;
-		  branch_result <= 0 ;
+    @(posedge clk)
+    @(posedge clk)
+    @(posedge clk)
+    @(posedge clk)
+    @(posedge clk)
+    @(posedge clk)
+    @(posedge clk)
+    @(posedge clk)
+    @(posedge clk)
+    @(posedge clk)
+    @(posedge clk)
+    @(posedge clk)
+    @(posedge clk)
+    @(posedge clk)
   $finish;
 end
   
@@ -202,7 +266,7 @@ pshare U0 (
 .branch_result (branch_result),
 .prediction (),
 .predicted_PC (),
-.next_PC (addr),
+.next_PC (next_PC),
 .direction(addr),
 .total_branch (),
 .was_branch (was_branch)
