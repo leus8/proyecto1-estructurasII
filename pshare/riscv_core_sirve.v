@@ -50,8 +50,8 @@ module riscv_core #(
 );
 
 /*
-ENABLE_PIPELINE allows pipelined operation, but it creates prediction very long
-combinatorial loop, which is on prediction critical path big time:
+ENABLE_PIPELINE allows pipelined operation, but it creates a very long
+combinatorial loop, which is on a critical path big time:
 irdata_i - if_opcode_w - hazard_w - id_exec_w - ird_o - iaddr_o.
 
 If ENABLE_PIPELINE is not defined, then the same pipeline structure is
@@ -59,7 +59,7 @@ used, but hazards are generated if pipeline stages are busy, without
 looking at the actual registers processed by the stage.
 
 A better way to solve this is to decouple the instruction fetch stage
-from the decode stage, but this results in prediction more complex overall design.
+from the decode stage, but this results in a more complex overall design.
 
 And the next critical path is immediate decode, which is much harder
 to improve.
@@ -134,7 +134,7 @@ always @(posedge clk_i) begin
     end
 
     ST_HIGH: begin
-      if (if_hi_is_rv_w) begin // Only possible after prediction branch
+      if (if_hi_is_rv_w) begin // Only possible after a branch
         if_state_r <= ST_UNALIGNED;
         if_buf_r <= irdata_i[31:16];
       end else begin
@@ -898,19 +898,17 @@ wire branch = (BR_JUMP == id_branch_r) | (BR_EQ   == id_branch_r) | (BR_NE   == 
 
 wire [31:0] predicted_PC;
 wire [31:0] num_branch;
-//wire past_prediction;
+wire prediction;
 
 pshare U0 (
 .clk (clk_i),
 .reset (reset_i),
 .was_branch (branch),
 .branch_result (branch_taken_w),
-.past_prediction (),
-.prediction (),
+.prediction (prediction),
 .predicted_PC (predicted_PC),
 .next_PC (jump_addr_w),
 .direction(iaddr_o),
-.total_errors(),
 .total_branch (num_branch)
 );
 
@@ -931,15 +929,13 @@ module pshare
   input  branch_result, //Taken or Not taken.
   input  [Direction_SIZE-1:0] next_PC, // Jump direction
   input [Direction_SIZE-1:0] direction, 
-  output past_prediction, //Take it or not take it.
-  output reg prediction,
+  output reg prediction, //Take it or not take it.
   output reg [Direction_SIZE-1:0] predicted_PC,
-  output reg [Direction_SIZE-1:0]total_errors,
   output reg [31:0]total_branch
  );
   //output reg [31:0]past_past_direction
 
- integer i,j,k,y;
+ integer i,j,k;
  reg [Direction_SIZE-1:0] direction_reg;
  reg [Direction_SIZE-1:0] past_direction;
  reg [Direction_SIZE-1:0] past_past_direction;
@@ -947,17 +943,13 @@ module pshare
  reg branch_reg;
  reg past_branch;
  reg past_past_branch;
- reg past_prediction;
- reg past_past_prediction;
- reg [Direction_SIZE-1:0] past_predicted_PC;
- reg [Direction_SIZE-1:0] past_past_predicted_PC;
  reg was_branch_reg;
  reg past_was_branch;
  reg past_past_was_branch;
  reg [Direction_SIZE-1:0] pc_reg;
  reg [Direction_SIZE-1:0] past_pc;
  reg [Direction_SIZE-1:0] past_past_pc;
- //reg past_prediction;
+ //reg prediction;
  //reg total_branch;
  //00 SN
  //01 WN
@@ -968,76 +960,20 @@ module pshare
  reg [Direction_SIZE -1 :0] Table_PC [0:Table_SIZE - 1];// contiene direcciones de PC
  reg [31:0]errores; //  La cantidad de errores que se tienen
  reg [31:0]pc_error; //  La cantidad de errores que se tienen
- reg errores_signal;
- reg pc_error_signal;
- 
- //reg prediction;
  //always @(*) begin
    //direction_reg = direction;
    //branch_reg = branch_result;
    //pc_reg = next_PC;
    //was_branch_reg = was_branch;
  //end
-
-always @(*) begin
-
-  if (errores_signal || pc_error_signal) begin
-      total_errors = total_errors + 1;
-      errores_signal = 0;
-      pc_error_signal = 0;
-    end
-  
-  i =0 ;
-    while (i<Table_SIZE) begin
-      
-      if (history_table[i] == direction) begin
-          //past_prediction = state_dir[i];
-          if (state_dir[i]==2'b10 || state_dir[i]==2'b11) begin
-              prediction=1;
-          end
-          else if (state_dir[i]==2'b01 || state_dir[i]==2'b00) begin
-              prediction=0;
-          end
-          i = Table_SIZE;
-          k=1;  
-      end
-      i = i + 1;
-    end
-    i=0;
-    if (k==0) begin
-      prediction = 0;
-    end
-    if (k == 1) begin
-      k=0;
-    end
-
-    while (i<Table_SIZE) begin
-      if (history_table[i] == direction) begin
-          predicted_PC = Table_PC[i];
-          i=Table_SIZE ;
-          k=1;
-      end
-      i = i + 1;
-    end
-    if (k==0) begin
-      predicted_PC = 1;
-    end
-    if (k==1) begin
-      k=0;
-    end
-  i=0;
-end
-
   
  always @(posedge clk) begin
   if (reset == 1) begin
     k=0;
     //past_direction <= 0;
     total_branch = 0;
+    prediction = 0;
     errores = 0;
-    total_errors = 0;
-    errores_signal = 0;
-    pc_error_signal = 0;
     pc_error = 0;
     for (i = 0; i < Table_SIZE; i = i + 1) begin
       history_table[i] = 1;
@@ -1045,26 +981,16 @@ end
       Table_PC[i]=1;
     end
   end
-  y=0;
-  if (past_was_branch == 1 || past_past_was_branch == 1)begin
+  else if (past_was_branch == 1)begin
     for (i = 0; i < Table_SIZE; i = i + 1) begin
       if (history_table[i] == past_past_direction) begin
           if (past_past_branch == 1 && state_dir[i] != 2'b11) begin
-              if (past_past_branch == 1 && state_dir[i] != 2'b10) begin
-                errores <= errores + 1;
-                errores_signal<=1;
-              end 
-              else errores_signal <= 0;
-              state_dir[i] <= state_dir[i] + 1;
+              if (past_past_branch == 1 && state_dir[i] != 2'b10) errores = errores + 1;
+              state_dir[i] = state_dir[i] + 1;
           end
           else if (past_past_branch == 0 && state_dir[i] != 00) begin
-            if (past_past_branch == 0 && state_dir[i] != 01)begin
-              errores_signal<=1;
-             errores <= errores + 1;
-            end
-            else errores_signal <= 0;
-            state_dir[i] <= state_dir[i] - 1;
-
+            if (past_past_branch == 0 && state_dir[i] != 01) errores = errores + 1;
+            state_dir[i] = state_dir[i] - 1;
           end
       end
     end
@@ -1073,20 +999,14 @@ end
           if (past_past_pc != Table_PC[i]) begin
               pc_error = pc_error + 1;
               Table_PC[i] = past_past_pc;
-              pc_error_signal<=1;
           end
-          else pc_error_signal <= 0;
       end
     end
-
-  end
-
-  if (past_was_branch == 1 ) begin
     i =0 ;
     if (direction != past_past_direction) begin
         while (i<Table_SIZE) begin
           //if (history_table[i] == past_past_past_direction) begin
-          //    past_prediction = state_dir[i];
+          //    prediction = state_dir[i];
           //    i = 100;  
           //end
           if (history_table[i]==past_direction) begin
@@ -1099,8 +1019,34 @@ end
           i = i + 1;
         end
       end
-  end
+  
+    
+    i =0 ;
+    while (i<Table_SIZE) begin
+      if (history_table[i] == past_direction) begin
+          //prediction = state_dir[i];
+          if (state_dir[i]==2'b10 || state_dir[i]==2'b11) begin
+              prediction = 1;
+          end
+          else if (state_dir[i]==2'b01 || state_dir[i]==2'b00) begin
+              prediction = 0;
+          end
+          i = Table_SIZE;  
+      end
+      i = i + 1;
+    end
+    i=0;
+    while (i<Table_SIZE) begin
+      if (history_table[i] == past_direction) begin
+          predicted_PC = Table_PC[i];  
+      end
+      i = i + 1;
+    end
 
+  end
+  else if (was_branch == 0) begin
+    prediction <= 0;
+  end
   //past_direction <= direction;
     past_direction <= direction;
     past_past_direction <= past_direction;
@@ -1111,13 +1057,8 @@ end
     past_past_pc <= past_pc;
     past_was_branch <= was_branch;
     past_past_was_branch <= past_was_branch;
-    past_prediction <= prediction;
-    past_past_prediction <= past_prediction;
-    past_predicted_PC <= predicted_PC;
-    past_past_predicted_PC <= past_predicted_PC;
-    if (was_branch == 1) total_branch <= total_branch + 1;
-    
-
+   if (was_branch == 1) total_branch <= total_branch + 1;
+  
  end 
 
  //always @(negedge clk) begin
