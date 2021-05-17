@@ -895,16 +895,29 @@ end
 
 wire branch = (BR_JUMP == id_branch_r) | (BR_EQ   == id_branch_r) | (BR_NE   == id_branch_r) | (BR_LT   == id_branch_r) | (BR_GE   == id_branch_r) | (BR_LTU  == id_branch_r) | (BR_GEU  == id_branch_r);
 wire [31:0] predicted_PC;
+wire prediction_g;
+wire prediction_torneo;
 
 gshare U0 (
 .clk_i (clk_i),
+.addr_o(iaddr_o),
 .reset_i (reset_i),
 .branch_taken_w (branch_taken_w),
 .predicted_PC (predicted_PC),
 .jump_addr_w (jump_addr_w),
 .branch_inst (1),
 .branch (branch) 
+.prediction(prediction_g)
 );
+predictor_torneo T0(
+  .clk_i(clk_i),
+  .reset_i(reset_i),
+  .branch_taken_w(branch_taken_w), //Taken or Not taken.
+  .branch(branch), 
+  .prediction_g(),
+  .prediction_p(predictor), //1 BIT
+  .prediction_torneo(prediction_torneo)
+  );
 
 endmodule
 
@@ -912,12 +925,13 @@ endmodule
 module gshare (
   input clk_i,
   input reset_i,
+  input [31:0] addr_o,
   input branch_taken_w, //Taken or Not taken.
   input [31:0] branch_inst, // Jump direction
   input branch, 
   input [31:0] jump_addr_w,
-  output [31:0] predicted_PC
- );
+  output [31:0] predicted_PC,
+  output prediction);
 
 /*Branch pedirctor gshare: 2 bits */
 parameter     HISTORY_SIZE  = 6;
@@ -985,7 +999,7 @@ always @(posedge clk_i) begin
         global_history = {1'b0, global_history[HISTORY_SIZE-1:1]};
         max_counter = 0;
       end
-      else global_history <= {branch_taken_w, global_history[HISTORY_SIZE-1:1]};
+      else global_history <= ({branch_taken_w, global_history[HISTORY_SIZE-1:1]})^addr_o;
     end
 
     if (branch && (branch_taken_w != prediction)) errores++;
@@ -1012,5 +1026,78 @@ always @(*) begin
   else prediction = 0;
 end
 
+
+endmodule
+
+module predictor_torneo (
+  input clk_i,
+  input reset_i,
+  input branch_taken_w, //Taken or Not taken.
+  input branch, 
+  input prediction_g,
+  input prediction_p,
+  output prediction_torneo);
+
+/*Branch pedirctor gshare: 2 bits */
+
+ //00 SG
+ //01 WG
+ //10 WP
+ //11 SP
+
+reg [1:0] estado;
+reg prediction_torneo;
+
+wire branch;
+
+always @(posedge clk_i) begin
+  
+  if(reset_i) begin
+    estado = 0;
+  end
+  
+  else begin
+    if(branch) begin
+      
+      if ((branch_taken_w == prediction_g)) begin
+          if ((estado != 2'b00)) begin
+              estado--;
+          end
+          else if ((estado == 2'b00)) begin
+              estado = estado;
+          end          
+      end
+      
+      if ((branch_taken_w == prediction_p)) begin
+          if ((estado != 2'b11)) begin
+              estado++;
+          end
+          else if ((estado == 2'b11)) begin
+              estado = estado;
+          end          
+      end
+   
+    end
+    
+    if (branch && (branch_taken_w != prediction_torneo))begin
+      errores++;
+    end
+  
+  end
+end
+
+always @(*) begin
+  if (branch && estado[1])begin
+      prediction_torneo = 1; // PSHARE
+  end
+
+  else if (branch && !estado[1])begin
+    prediction_torneo = 0;
+  end
+
+  else begin
+    prediction_torneo = 0;
+  end 
+end
 
 endmodule
