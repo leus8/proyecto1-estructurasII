@@ -903,6 +903,7 @@ wire prediction;
 pshare U0 (
 .clk (clk_i),
 .reset (reset_i),
+.was_branch (branch),
 .branch_result (branch_taken_w),
 .prediction (prediction),
 .predicted_PC (predicted_PC),
@@ -919,11 +920,12 @@ endmodule
 module pshare 
   #(
   parameter     Direction_SIZE  = 32,
-  parameter     TABLE_SIZE = 1000
+  parameter     Table_SIZE = 100
   )
  (
   input  clk,
   input  reset,
+  input  was_branch,
   input  branch_result, //Taken or Not taken.
   input  [Direction_SIZE-1:0] next_PC, // Jump direction
   input [Direction_SIZE-1:0] direction, 
@@ -933,7 +935,7 @@ module pshare
  );
   //output reg [31:0]past_past_direction
 
- integer i,j;
+ integer i,j,k;
  reg [Direction_SIZE-1:0] direction_reg;
  reg [Direction_SIZE-1:0] past_direction;
  reg [Direction_SIZE-1:0] past_past_direction;
@@ -941,42 +943,46 @@ module pshare
  reg branch_reg;
  reg past_branch;
  reg past_past_branch;
+ reg was_branch_reg;
+ reg past_was_branch;
+ reg past_past_was_branch;
+ reg [Direction_SIZE-1:0] pc_reg;
+ reg [Direction_SIZE-1:0] past_pc;
+ reg [Direction_SIZE-1:0] past_past_pc;
  //reg prediction;
  //reg total_branch;
  //00 SN
  //01 WN
  //10 WT
  //11 ST
- reg [Direction_SIZE -1 :0] history_table [0:TABLE_SIZE-1];// contiene direcciones
- reg [1:0]state_dir [0:TABLE_SIZE-1]; // Donde se tiene el valor de la direccion
+ reg [Direction_SIZE -1 :0] history_table [0:Table_SIZE - 1];// contiene direcciones
+ reg [1:0]state_dir [0:Table_SIZE - 1]; // Donde se tiene el valor de la direccion
+ reg [Direction_SIZE -1 :0] Table_PC [0:Table_SIZE - 1];// contiene direcciones de PC
  reg [31:0]errores; //  La cantidad de errores que se tienen
-
- always @(*) begin
-   direction_reg = direction;
-   branch_reg = branch_result;
- end
+ reg [31:0]pc_error; //  La cantidad de errores que se tienen
+ //always @(*) begin
+   //direction_reg = direction;
+   //branch_reg = branch_result;
+   //pc_reg = next_PC;
+   //was_branch_reg = was_branch;
+ //end
   
  always @(posedge clk) begin
   if (reset == 1) begin
+    k=0;
     //past_direction <= 0;
     total_branch = 0;
     prediction = 0;
     errores = 0;
-    for (i = 0; i < TABLE_SIZE; i = i + 1) begin
+    pc_error = 0;
+    for (i = 0; i < Table_SIZE; i = i + 1) begin
       history_table[i] = 1;
       state_dir[i] = 1;
+      Table_PC[i]=1;
     end
   end
-  else begin
-    //past_direction <= direction;
-    past_direction <= direction;
-    past_past_direction <= past_direction;
-    past_past_past_direction <= past_past_direction;
-    past_branch <= branch_reg;
-    past_past_branch <= past_branch;
-    if(branch_result) total_branch = total_branch + 1;
-    
-    for (i = 0; i < TABLE_SIZE; i = i + 1) begin
+  else if (past_was_branch == 1)begin
+    for (i = 0; i < Table_SIZE; i = i + 1) begin
       if (history_table[i] == past_past_direction) begin
           if (past_past_branch == 1 && state_dir[i] != 2'b11) begin
               if (past_past_branch == 1 && state_dir[i] != 2'b10) errores = errores + 1;
@@ -988,25 +994,35 @@ module pshare
           end
       end
     end
-    i =0 ;
-    if (direction != past_direction) begin
-      while (i<TABLE_SIZE) begin
-        //if (history_table[i] == past_past_past_direction) begin
-        //    prediction = state_dir[i];
-        //    i = 100;  
-        //end
-        if (history_table[i]==past_direction) begin
-          i=TABLE_SIZE;
-        end
-        else if (history_table[i] == 1) begin
-            history_table[i] = past_direction;
-            i = TABLE_SIZE;     
-        end
-        i = i + 1;
+    for (i = 0; i < Table_SIZE; i = i + 1) begin
+      if (history_table[i] == past_past_direction) begin
+          if (past_past_pc != Table_PC[i]) begin
+              pc_error = pc_error + 1;
+              Table_PC[i] = past_past_pc;
+          end
       end
     end
     i =0 ;
-    while (i<TABLE_SIZE) begin
+    if (direction != past_past_direction) begin
+        while (i<Table_SIZE) begin
+          //if (history_table[i] == past_past_past_direction) begin
+          //    prediction = state_dir[i];
+          //    i = 100;  
+          //end
+          if (history_table[i]==past_direction) begin
+            i=Table_SIZE;
+          end
+          else if (history_table[i] == 1) begin
+              history_table[i] = past_direction;
+              i = Table_SIZE ;     
+          end
+          i = i + 1;
+        end
+      end
+  
+    
+    i =0 ;
+    while (i<Table_SIZE) begin
       if (history_table[i] == past_direction) begin
           //prediction = state_dir[i];
           if (state_dir[i]==2'b10 || state_dir[i]==2'b11) begin
@@ -1015,11 +1031,34 @@ module pshare
           else if (state_dir[i]==2'b01 || state_dir[i]==2'b00) begin
               prediction = 0;
           end
-          i = TABLE_SIZE;  
+          i = Table_SIZE;  
       end
       i = i + 1;
     end
+    i=0;
+    while (i<Table_SIZE) begin
+      if (history_table[i] == past_direction) begin
+          predicted_PC = Table_PC[i];  
+      end
+      i = i + 1;
+    end
+
   end
+  else if (was_branch == 0) begin
+    prediction <= 0;
+  end
+  //past_direction <= direction;
+    past_direction <= direction;
+    past_past_direction <= past_direction;
+    past_past_past_direction <= past_past_direction;
+    past_branch <= branch_result;      
+    past_past_branch <= past_branch;
+    past_pc <= next_PC;      
+    past_past_pc <= past_pc;
+    past_was_branch <= was_branch;
+    past_past_was_branch <= past_was_branch;
+   if (was_branch == 1) total_branch <= total_branch + 1;
+  
  end 
 
  //always @(negedge clk) begin
