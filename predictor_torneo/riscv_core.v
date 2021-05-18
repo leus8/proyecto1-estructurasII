@@ -1233,6 +1233,7 @@ end
         end
       end
   end
+
   //past_direction <= direction;
     past_direction <= direction;
     past_past_direction <= past_direction;
@@ -1248,7 +1249,9 @@ end
     past_predicted_PC <= predicted_PC;
     past_past_predicted_PC <= past_predicted_PC;
     if (was_branch == 1) total_branch <= total_branch + 1;
-end 
+    
+
+ end 
 
 endmodule
 
@@ -1267,10 +1270,6 @@ module predictor_torneo (
 
 /*Branch pedirctor gshare: 2 bits */
 
- //00 SG
- //01 WG
- //10 WP
- //11 SP
 
 reg [1:0] estado;
 reg prediction_torneo;
@@ -1288,36 +1287,28 @@ always @(posedge clk_i) begin
     errores_torneo = 0;
   end
   
+ //00 SG
+ //01 WG
+ //10 WP
+ //11 SP
   else begin
     if(branch) begin
-      
-      if ((branch_taken_w == prediction_g)) begin
-          if ((estado != 2'b00)) begin
-              estado--;
-          end
-          else if ((estado == 2'b00)) begin
-              estado = estado;
-          end          
+      if(!estado[1]) begin
+        if (branch_taken_w == prediction_g && jump_addr_w == pc_g && estado != 2'b00) estado--;
+        else if ((branch_taken_w != prediction_g || jump_addr_w != pc_g) && estado != 2'b11) estado++;
       end
-      else if ((branch_taken_w == prediction_p)) begin
-          if ((estado != 2'b11)) begin
-              estado++;
-          end
-          else if ((estado == 2'b11)) begin
-              estado = estado;
-          end          
-      end
-      else if ((branch_taken_w != prediction_p) || (branch_taken_w != prediction_g)) begin
-        estado = estado;
+      else if(estado[1]) begin
+        if (branch_taken_w == prediction_p && jump_addr_w == pc_p && estado != 2'b11) estado++;
+        else if((branch_taken_w != prediction_p || jump_addr_w != pc_p) && estado != 2'b00) estado--;
       end
     end
 
     if(branch && prediction != branch_taken_w)begin
       errores_torneo++;  
     end
-    else if (branch && pc_pred_torneo != jump_addr_w) begin
-      errores_torneo++;
-    end
+    // else if (branch && pc_pred_torneo != jump_addr_w) begin
+    //   errores_torneo++;
+    // end
     else begin
       errores_torneo = errores_torneo;
     end
