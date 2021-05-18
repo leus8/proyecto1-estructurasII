@@ -1054,6 +1054,7 @@ endmodule
 module pshare 
   #(
   parameter     Direction_SIZE  = 32,
+  parameter     ID_SIZE = 16,
   parameter     Table_SIZE = 100
   )
  (
@@ -1062,7 +1063,7 @@ module pshare
   input  was_branch,
   input  branch_result, //Taken or Not taken.
   input  [Direction_SIZE-1:0] next_PC, // Jump direction
-  input [Direction_SIZE-1:0] direction, 
+  input [ID_SIZE-1:0] direction, 
   output past_prediction, //Take it or not take it.
   output reg prediction,
   output reg [Direction_SIZE-1:0] predicted_PC,
@@ -1072,10 +1073,10 @@ module pshare
   //output reg [31:0]past_past_direction
 
  integer i,j,k,y;
- reg [Direction_SIZE-1:0] direction_reg;
- reg [Direction_SIZE-1:0] past_direction;
- reg [Direction_SIZE-1:0] past_past_direction;
- reg [Direction_SIZE-1:0] past_past_past_direction;
+ reg [ID_SIZE-1:0] direction_reg;
+ reg [ID_SIZE-1:0] past_direction;
+ reg [ID_SIZE-1:0] past_past_direction;
+ reg [ID_SIZE-1:0] past_past_past_direction;
  reg branch_reg;
  reg past_branch;
  reg past_past_branch;
@@ -1095,7 +1096,7 @@ module pshare
  //01 WN
  //10 WT
  //11 ST
- reg [Direction_SIZE -1 :0] history_table [0:Table_SIZE - 1];// contiene direcciones
+ reg [ID_SIZE -1 :0] history_table [0:Table_SIZE - 1];// contiene direcciones
  reg [1:0]state_dir [0:Table_SIZE - 1]; // Donde se tiene el valor de la direccion
  reg [Direction_SIZE -1 :0] Table_PC [0:Table_SIZE - 1];// contiene direcciones de PC
  reg [31:0]errores; //  La cantidad de errores que se tienen
@@ -1232,7 +1233,6 @@ end
         end
       end
   end
-
   //past_direction <= direction;
     past_direction <= direction;
     past_past_direction <= past_direction;
@@ -1248,9 +1248,7 @@ end
     past_predicted_PC <= predicted_PC;
     past_past_predicted_PC <= past_predicted_PC;
     if (was_branch == 1) total_branch <= total_branch + 1;
-    
-
- end 
+end 
 
 endmodule
 
@@ -1317,9 +1315,9 @@ always @(posedge clk_i) begin
     if(branch && prediction != branch_taken_w)begin
       errores_torneo++;  
     end
-    // else if (branch && pc_pred_torneo != jump_addr_w) begin
-    //   errores_torneo++;
-    // end
+    else if (branch && pc_pred_torneo != jump_addr_w) begin
+      errores_torneo++;
+    end
     else begin
       errores_torneo = errores_torneo;
     end
