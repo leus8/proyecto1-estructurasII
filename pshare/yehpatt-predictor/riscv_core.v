@@ -923,7 +923,8 @@ module pshare
   #(
   parameter     Direction_SIZE  = 32,
   parameter     ID_SIZE = 16,
-  parameter     Table_SIZE = 100
+  parameter     Table_SIZE = 100,
+  parameter     PATTERN_SIZE = 4
   )
  (
   input  clk,
@@ -965,7 +966,9 @@ module pshare
  //10 WT
  //11 ST
  reg [ID_SIZE -1 :0] history_table [0:Table_SIZE - 1];// contiene direcciones
- reg BHT [0:Table_SIZE-1];
+ //reg BHT [0:Table_SIZE-1];
+ reg [1:0]BHT [0:Table_SIZE-1];
+ reg [1:0]PT [0:PATTERN_SIZE-1];
  reg [1:0]state_dir [0:Table_SIZE - 1]; 
  reg [1:0]state_dir_t [0:Table_SIZE - 1];
  reg [1:0]state_dir_nt [0:Table_SIZE - 1];
@@ -999,28 +1002,49 @@ always @(*) begin
     end
   
   i =0 ;
+  if (was_branch == 1) begin
     while (i<Table_SIZE) begin
       
-      if (history_table[i] == direction) begin
+      if (history_table[i] == direction ) begin
         if (BHT[i] == 0) begin
-          if (state_dir_nt[i]==2'b10 || state_dir_nt[i]==2'b11) begin
+          if (PT[0]==2'b10 || PT[0]==2'b11) begin
               prediction=1;
           end
-          else if (state_dir_nt[i]==2'b01 || state_dir_nt[i]==2'b00) begin
+          else if (PT[0]==2'b01 || PT[0]==2'b00) begin
               prediction=0;
           end
           i = Table_SIZE;
           k=1;  
         end
         else if (BHT[i] == 1) begin
-          if (state_dir_t[i]==2'b10 || state_dir_t[i]==2'b11) begin
+          if (PT[1]==2'b10 || PT[1]==2'b11) begin
               prediction=1;
           end
-          else if (state_dir_t[i]==2'b01 || state_dir_t[i]==2'b00) begin
+          else if (PT[1]==2'b01 || PT[1]==2'b00) begin
               prediction=0;
           end
           i = Table_SIZE;
           k=1; 
+        end
+        else if (BHT[i] == 2) begin
+          if (PT[2]==2'b10 || PT[2]==2'b11) begin
+              prediction=1;
+          end
+          else if (PT[2]==2'b01 || PT[2]==2'b00) begin
+              prediction=0;
+          end
+          i = Table_SIZE;
+          k=1;
+        end
+        else if (BHT[i] == 3) begin
+          if (PT[3]==2'b10 || PT[3]==2'b11) begin
+              prediction=1;
+          end
+          else if (PT[3]==2'b01 || PT[3]==2'b00) begin
+              prediction=0;
+          end
+          i = Table_SIZE;
+          k=1;
         end
 
       end
@@ -1028,7 +1052,13 @@ always @(*) begin
     end
     i=0;
     if (k==0) begin
-      prediction = 0;
+      if (PT[0]==2'b10 || PT[0]==2'b11) begin
+          prediction=1;
+      end
+      else if (PT[0]==2'b01 || PT[0]==2'b00) begin
+          prediction=0;
+      end
+      //prediction = 0;
     end
     if (k == 1) begin
       k=0;
@@ -1052,6 +1082,10 @@ always @(*) begin
     end
   i=0;
 end
+else begin
+  prediction = 0;
+end
+end
 
   
  always @(posedge clk) begin
@@ -1064,11 +1098,12 @@ end
     errores_signal = 0;
     pc_error_signal = 0;
     pc_error = 0;
+    PT[0] = 1;
+    PT[1] = 1;
+    PT[2] = 1;
+    PT[3] = 1;
     for (i = 0; i < Table_SIZE; i = i + 1) begin
       history_table[i] = 1;
-      state_dir[i] = 1;
-      state_dir_nt[i] = 1;
-      state_dir_t[i] = 1;
       BHT[i] = 0;
       Table_PC[i]=1;
     end
@@ -1079,52 +1114,93 @@ end
       if (history_table[i] == past_past_direction) begin
 
         if(BHT[i] == 0) begin
-          if (past_past_branch == 1 && state_dir_nt[i] != 2'b11) begin
-              if (past_past_branch == 1 && state_dir_nt[i] != 2'b10) begin
+          if (past_past_branch == 1 && PT[0] != 2'b11) begin
+              if (past_past_branch == 1 && PT[0] != 2'b10) begin
                 errores <= errores + 1;
                 errores_signal<=1;
               end 
               else errores_signal <= 0;
-              state_dir_nt[i] <= state_dir_nt[i] + 1;
+              PT[0] <= PT[0] + 1;
           end
-          else if (past_past_branch == 0 && state_dir_nt[i] != 00) begin
-            if (past_past_branch == 0 && state_dir_nt[i] != 01)begin
+          else if (past_past_branch == 0 && PT[0] != 00) begin
+            if (past_past_branch == 0 && PT[0] != 01)begin
               errores_signal<=1;
              errores <= errores + 1;
             end
             else errores_signal <= 0;
-            state_dir_nt[i] <= state_dir_nt[i] - 1;
+            PT[0] <= PT[0] - 1;
           end
         end
         else if (BHT[i] == 1) begin
-          if (past_past_branch == 1 && state_dir_t[i] != 2'b11) begin
-              if (past_past_branch == 1 && state_dir_t[i] != 2'b10) begin
+          if (past_past_branch == 1 && PT[1] != 2'b11) begin
+              if (past_past_branch == 1 && PT[1] != 2'b10) begin
                 errores <= errores + 1;
                 errores_signal<=1;
               end 
               else errores_signal <= 0;
-              state_dir_t[i] <= state_dir_t[i] + 1;
+              PT[1] <= PT[1] + 1;
           end
-          else if (past_past_branch == 0 && state_dir_t[i] != 00) begin
-            if (past_past_branch == 0 && state_dir_t[i] != 01)begin
+          else if (past_past_branch == 0 && PT[1] != 00) begin
+            if (past_past_branch == 0 && PT[1] != 01)begin
               errores_signal<=1;
              errores <= errores + 1;
             end
             else errores_signal <= 0;
-            state_dir_t[i] <= state_dir_t[i] - 1;
+            PT[1] <= PT[1] - 1;
           end    
         end
-        BHT[i] =past_past_branch;          
+
+        else if (BHT[i] == 2) begin
+          if (past_past_branch == 1 && PT[2] != 2'b11) begin
+              if (past_past_branch == 1 && PT[2] != 2'b10) begin
+                errores <= errores + 1;
+                errores_signal<=1;
+              end 
+              else errores_signal <= 0;
+              PT[2] <= PT[2] + 1;
+          end
+          else if (past_past_branch == 0 && PT[2] != 00) begin
+            if (past_past_branch == 0 && PT[2] != 01)begin
+              errores_signal<=1;
+             errores <= errores + 1;
+            end
+            else errores_signal <= 0;
+            PT[2] <= PT[2] - 1;
+          end
+        end
+
+        else if (BHT[i] == 3) begin
+          if (past_past_branch == 1 && PT[3] != 2'b11) begin
+              if (past_past_branch == 1 && PT[3] != 2'b10) begin
+                errores <= errores + 1;
+                errores_signal<=1;
+              end 
+              else errores_signal <= 0;
+              PT[3] <= PT[3] + 1;
+          end
+          else if (past_past_branch == 0 && PT[3] != 00) begin
+            if (past_past_branch == 0 && PT[3] != 01)begin
+              errores_signal<=1;
+             errores <= errores + 1;
+            end
+            else errores_signal <= 0;
+            PT[3] <= PT[3] - 1;
+          end
+        end
+        
+        BHT[i] = BHT[i] << 1;
+        BHT[i][0] = past_past_branch;    
+              
       end
     end
     for (i = 0; i < Table_SIZE; i = i + 1) begin
       if (history_table[i] == past_past_direction) begin
           if (past_direction != past_past_predicted_PC) begin
-            if (past_direction != past_past_predicted_PC + 2) begin
-              pc_error = pc_error + 1;
-              pc_error_signal<=1;
-            end
-              if (past_past_branch == 1) Table_PC[i] = past_direction;
+              if (past_direction != past_past_predicted_PC + 2 ) begin
+                  pc_error = pc_error + 1;
+                  pc_error_signal<=1;  
+              end
+              if (past_past_branch == 1) Table_PC[i] = past_direction;             
           end
           else pc_error_signal <= 0;
       end
