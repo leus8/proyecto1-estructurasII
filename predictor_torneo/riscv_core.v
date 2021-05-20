@@ -902,7 +902,7 @@ wire [31:0] num_branch;
 
 gshare U0 (
 .clk_i (clk_i),
-.addr_o(iaddr_o),
+.addr_o(if_pc_r),
 .reset_i (reset_i),
 .branch_taken_w (branch_taken_w),
 .predicted_PC (predicted_PC_gshare),
@@ -946,7 +946,7 @@ endmodule
 module gshare (
   input clk_i,
   input reset_i,
-  input [31:0] addr_o,
+  input [15:0] addr_o,
   input branch_taken_w, //Taken or Not taken.
   input [31:0] branch_inst, // Jump direction
   input branch, 
@@ -1347,9 +1347,9 @@ always @(posedge clk_i) begin
     if(branch && prediction != branch_taken_w)begin
       errores_torneo++;  
     end
-    // else if (branch && pc_pred_torneo != jump_addr_w) begin
-    //   errores_torneo++;
-    // end
+    else if (branch && pc_pred_torneo != jump_addr_w) begin
+      errores_torneo++;
+    end
     else begin
       errores_torneo = errores_torneo;
     end
