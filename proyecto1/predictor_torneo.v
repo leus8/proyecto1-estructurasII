@@ -1097,6 +1097,11 @@ always @(posedge clk_i) begin
     else if(branch && !prediction_torneo && (branch_taken_w != prediction_g))begin
       errores_torneo++;  
     end
+    //
+    else if (branch && pc_pred_torneo != jump_addr_w) begin
+      errores_torneo++;
+    end
+    //
     else begin
       errores_torneo = errores_torneo;
     end
