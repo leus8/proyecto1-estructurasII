@@ -964,7 +964,7 @@ endmodule
 module gshare (
   input clk_i,
   input reset_i,
-  input [15:0] addr_o,
+  input [31:0] addr_o,
   input branch_taken_w, //Taken or Not taken.
   input [31:0] branch_inst, // Jump direction
   input branch, 
@@ -1067,12 +1067,12 @@ always @(posedge clk_i) begin
 end
 
 always @(*) begin
-  if(branch && branch_taken_w ) predicted_PC = PC_prediction[global_history];
-  else predicted_PC = 0;
-
   if (branch && pattern_history[global_history][1]) prediction = 1;
   else if (branch && !pattern_history[global_history][1]) prediction = 0;
   else prediction = 0;
+
+  if(branch && prediction ) predicted_PC = PC_prediction[global_history];
+  else predicted_PC = addr_o+2;
 end
 
 
@@ -1453,9 +1453,9 @@ always @(posedge clk_i) begin
     if(branch && prediction != branch_taken_w)begin
       errores_torneo++;  
     end
-    else if (branch && pc_pred_torneo != jump_addr_w) begin
-      errores_torneo++;
-    end
+    // else if (branch && pc_pred_torneo != jump_addr_w) begin
+    //   errores_torneo++;
+    // end
     else begin
       errores_torneo = errores_torneo;
     end
@@ -1596,19 +1596,6 @@ always @(posedge clk_i) begin
       end
     end
 
-
-    // if (branch && (branch_taken_w != prediction)) begin
-    //   errores_g_totales++;
-    //   errores_g_prediccion++;
-    //   if(jump_addr_w != PC_prediction[global_history]) errores_g_pc++;
-    // end
-    // else if (branch && jump_addr_w != PC_prediction[global_history]) begin
-    //   errores_g_totales++;
-    //   errores_g_pc++;
-    // end
-
-
-
   end
 end
 
@@ -1618,18 +1605,20 @@ always @(*) begin
 
     if(pattern_history[global_history][1] == 0) begin
       prediction = prediccion_g;
-      predicted_PC = pc_g;
+      if(prediction) predicted_PC = pc_g;
+      else predicted_PC = addr_o+2;
     end
     else begin
       prediction = prediccion_p;
-      predicted_PC = pc_p;
+      if(prediction) predicted_PC = pc_p;
+      else predicted_PC = addr_o+2;
     end
 
   end
   else begin
     prediccion_torneo = 0;
     prediction = 0;
-    predicted_PC = 0;
+    predicted_PC = addr_o+2;
   end
 
 
